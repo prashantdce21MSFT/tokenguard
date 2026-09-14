@@ -1,0 +1,15 @@
+.vscode/**
+node_modules/**
+**/node_modules/**
+deck/**
+media/options/**
+*.vsix
+*.pptx
+*.mp4
+*.mov
+*.gif
+.gitignore
+tsconfig.json
+**/*.map
+**/*.ts
+!dist/**/*.js

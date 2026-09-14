@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+*.map
+*.mp4
+*.mov
+*.pptx

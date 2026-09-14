@@ -1,0 +1,194 @@
+{
+  "name": "tokenguard",
+  "displayName": "TokenGuard — Live Token Economics Coach",
+  "description": "Lives in VS Code chat, estimates tokens, enforces a token budget, and highlights token-economics mistakes as you chat with AI.",
+  "version": "0.5.2",
+  "publisher": "PrashantVerma",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": { "color": "#0d1626", "theme": "dark" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prashantdce21MSFT/tokenguard.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "tokenguard.guard",
+        "fullName": "TokenGuard",
+        "name": "tokenguard",
+        "description": "Guards your token budget and flags token-economics mistakes before the model runs.",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "tokenguard.resetSession",
+        "title": "TokenGuard: Reset Session Budget"
+      },
+      {
+        "command": "tokenguard.setBudget",
+        "title": "TokenGuard: Set Token Budgets"
+      },
+      {
+        "command": "tokenguard.showReport",
+        "title": "TokenGuard: Show Usage Report"
+      },
+      {
+        "command": "tokenguard.showCalibration",
+        "title": "TokenGuard: Show Personal Calibration"
+      },
+      {
+        "command": "tokenguard.showEditRoi",
+        "title": "TokenGuard: Show Edit ROI (did the edits stick?)"
+      },
+      {
+        "command": "tokenguard.showDashboard",
+        "title": "TokenGuard: Show Usage Dashboard"
+      }
+    ],
+    "configuration": {
+      "title": "TokenGuard",
+      "properties": {
+        "tokenguard.sessionBudget": {
+          "type": "number",
+          "default": 50000,
+          "description": "Maximum input+output tokens allowed per session before TokenGuard blocks requests."
+        },
+        "tokenguard.dailyBudget": {
+          "type": "number",
+          "default": 500000,
+          "description": "Maximum input+output tokens allowed per calendar day before TokenGuard blocks requests."
+        },
+        "tokenguard.warnThresholdPercent": {
+          "type": "number",
+          "default": 80,
+          "description": "Percentage of a budget at which TokenGuard starts warning (before hard block at 100%)."
+        },
+        "tokenguard.hardBlock": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, requests over budget are refused. If false, TokenGuard warns but still runs the request."
+        },
+        "tokenguard.maxAttachedReferences": {
+          "type": "number",
+          "default": 5,
+          "description": "Warn when more than this many files/context references are attached to a single request."
+        },
+        "tokenguard.snowballGrowthTokens": {
+          "type": "number",
+          "default": 4000,
+          "description": "Warn when a turn's context grows by more than this many tokens versus the previous turn in the same session."
+        },
+        "tokenguard.cheapModelHints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["mini", "haiku", "flash", "small", "lite", "nano", "4o-mini", "3.5"],
+          "description": "Substrings that identify a cheap/small model. Used to detect 'overkill model for a trivial task'."
+        },
+        "tokenguard.sensitivePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Optional user-supplied regex patterns (JavaScript syntax) that flag sensitive data pasted into a prompt. When empty, a built-in set of generic secret detectors is used. Add your own organization-specific identifiers here in your user settings."
+        },
+        "tokenguard.modelPrices": {
+          "type": "object",
+          "default": {},
+          "description": "Override or add per-model prices (USD per 1,000,000 tokens). Keys are lowercase substrings matched against the model id; each value is { \"input\": number, \"output\": number }. Example: { \"my-model\": { \"input\": 1.0, \"output\": 4.0 } }",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "input": { "type": "number" },
+              "output": { "type": "number" }
+            }
+          }
+        },
+        "tokenguard.reasoningModelHints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["opus", "o1", "o3", "o4", "gpt-5", "reason", "think"],
+          "description": "Substrings that identify a reasoning model whose hidden thinking tokens are billed as output."
+        },
+        "tokenguard.assumedCacheReadFraction": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "OPT-IN estimate: fraction (0–1) of input tokens assumed to be prompt-cache reads. Copilot does not expose the real cache split, so 0 (default) reports list-price upper-bound cost. Set e.g. 0.9 if most of your input is cached context."
+        },
+        "tokenguard.cacheReadPriceMultiplier": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Price of a cached input token as a fraction of the normal input rate (providers typically charge ~0.1×). Only used when tokenguard.assumedCacheReadFraction > 0."
+        },
+        "tokenguard.reasoningOutputMultiplier": {
+          "type": "number",
+          "default": 2.5,
+          "description": "Multiplier applied to output tokens on reasoning models to approximate hidden thinking-token cost."
+        },
+        "tokenguard.maxToolResultChars": {
+          "type": "number",
+          "default": 8000,
+          "description": "Maximum characters of a tool result fed back to the model. Larger results are truncated to curb the context snowball."
+        },
+        "tokenguard.blockDuplicates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip re-running a request that closely matches an earlier one this session, to save tokens."
+        },
+        "tokenguard.duplicateSimilarityThreshold": {
+          "type": "number",
+          "default": 0.85,
+          "description": "Similarity (0..1) above which a request is treated as a duplicate of an earlier one this session."
+        },
+        "tokenguard.enableCompaction": {
+          "type": "boolean",
+          "default": true,
+          "description": "Summarise older tool results when history exceeds the context window, to defuse the context snowball."
+        },
+        "tokenguard.maxContextWindowTokens": {
+          "type": "number",
+          "default": 24000,
+          "description": "Approximate token ceiling for accumulated history before TokenGuard compacts older tool results."
+        },
+        "tokenguard.maxToolsPerRequest": {
+          "type": "number",
+          "default": 64,
+          "description": "Maximum tools sent per request. TokenGuard keeps its own tools plus the most relevant external tools up to this budget."
+        },
+        "tokenguard.usageLogEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Append per-turn usage records (OpenTelemetry GenAI attributes) to .tokenguard/usage.jsonl for ingestion by an observability pipeline."
+        },
+        "tokenguard.creditMultipliers": {
+          "type": "object",
+          "default": {},
+          "description": "Override estimated Copilot premium-request credit multipliers per model. Keys are lowercase substrings matched against the model id; values are credits per request. Example: { \"opus\": 10, \"gpt-4o\": 1 }",
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.5.0"
+  }
+}
