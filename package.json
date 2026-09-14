@@ -2,11 +2,14 @@
   "name": "tokenguard",
   "displayName": "TokenGuard — Live Token Economics Coach",
   "description": "Lives in VS Code chat, estimates tokens, enforces a token budget, and highlights token-economics mistakes as you chat with AI.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "PrashantVerma",
   "license": "MIT",
   "icon": "media/icon.png",
-  "galleryBanner": { "color": "#0d1626", "theme": "dark" },
+  "galleryBanner": {
+    "color": "#0d1626",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/prashantdce21MSFT/tokenguard.git"
@@ -91,13 +94,26 @@
         },
         "tokenguard.cheapModelHints": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["mini", "haiku", "flash", "small", "lite", "nano", "4o-mini", "3.5"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "mini",
+            "haiku",
+            "flash",
+            "small",
+            "lite",
+            "nano",
+            "4o-mini",
+            "3.5"
+          ],
           "description": "Substrings that identify a cheap/small model. Used to detect 'overkill model for a trivial task'."
         },
         "tokenguard.sensitivePatterns": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Optional user-supplied regex patterns (JavaScript syntax) that flag sensitive data pasted into a prompt. When empty, a built-in set of generic secret detectors is used. Add your own organization-specific identifiers here in your user settings."
         },
@@ -108,15 +124,29 @@
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "input": { "type": "number" },
-              "output": { "type": "number" }
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              }
             }
           }
         },
         "tokenguard.reasoningModelHints": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["opus", "o1", "o3", "o4", "gpt-5", "reason", "think"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "opus",
+            "o1",
+            "o3",
+            "o4",
+            "gpt-5",
+            "reason",
+            "think"
+          ],
           "description": "Substrings that identify a reasoning model whose hidden thinking tokens are billed as output."
         },
         "tokenguard.assumedCacheReadFraction": {
@@ -175,7 +205,9 @@
           "type": "object",
           "default": {},
           "description": "Override estimated Copilot premium-request credit multipliers per model. Keys are lowercase substrings matched against the model id; values are credits per request. Example: { \"opus\": 10, \"gpt-4o\": 1 }",
-          "additionalProperties": { "type": "number" }
+          "additionalProperties": {
+            "type": "number"
+          }
         }
       }
     }
