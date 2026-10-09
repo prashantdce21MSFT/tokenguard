@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { costUsdWithCache, costSplitWithCache, priceForModel } from './pricing';
+import { costUsdWithCache, costSplitWithCache, costUsdRealCache, costSplitRealCache, priceForModel } from './pricing';
+import { loadAgentSessions } from './agentsessions';
 
 /**
  * Reads REAL per-turn token counts that VS Code Copilot persists to disk in
@@ -102,6 +103,8 @@ interface Turn {
     ts: number;
     snippet: string;
     files: string[];
+    /** Real prompt-cache read count (agent-mode sessions only); undefined for legacy jsonl. */
+    cacheRead?: number;
 }
 
 function normalizeModel(modelId: string): string {
@@ -215,11 +218,7 @@ export async function loadRealUsage(
         sessions: [],
         prices: {}
     };
-    if (!storageUri) {
-        return base;
-    }
-
-    const dirs = await chatSessionDirs(storageUri, scope);
+    const dirs = storageUri ? await chatSessionDirs(storageUri, scope) : [];
     const seen = new Set<string>();
     const byModel = new Map<string, ModelUsage>();
     const byProject = new Map<string, ProjectUsage>();
@@ -227,6 +226,90 @@ export async function loadRealUsage(
     const byCell = new Map<string, UsageCell>();
     const sessionList: SessionUsage[] = [];
     let sessions = 0;
+
+    // Fold a single turn into every aggregation map plus its session accumulator.
+    // Shared by the legacy chatSessions/*.jsonl path and the agent-mode SQLite path.
+    const accumulate = (turn: Turn, project: string, sess: SessionUsage): void => {
+        // Dedup by responseId so snapshot + patch entries aren't double-counted.
+        const key = turn.responseId || `${sess.sessionId}:${seen.size}`;
+        if (turn.responseId && seen.has(key)) {
+            return;
+        }
+        seen.add(key);
+        const m = byModel.get(turn.model) ?? {
+            model: turn.model, turns: 0, inputTokens: 0, outputTokens: 0, costUsd: 0
+        };
+        m.turns++;
+        m.inputTokens += turn.input;
+        m.outputTokens += turn.output;
+        const turnCost = turn.cacheRead != null
+            ? costUsdRealCache(turn.model, turn.input, turn.cacheRead, turn.output)
+            : costUsdWithCache(turn.model, turn.input, turn.output);
+        m.costUsd += turnCost;
+        byModel.set(turn.model, m);
+
+        const p = byProject.get(project) ?? {
+            project, turns: 0, inputTokens: 0, outputTokens: 0, costUsd: 0
+        };
+        p.turns++;
+        p.inputTokens += turn.input;
+        p.outputTokens += turn.output;
+        p.costUsd += turnCost;
+        byProject.set(project, p);
+
+        const date = turn.ts > 0
+            ? (() => { const d = new Date(turn.ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })()
+            : 'undated';
+
+        sess.turns++;
+        sess.inputTokens += turn.input;
+        sess.outputTokens += turn.output;
+        sess.costUsd += turnCost;
+        if (date !== 'undated' && !sess.date) {
+            sess.date = date;
+        }
+        if (turn.input > sess.peakInput) {
+            sess.peakInput = turn.input;
+            sess.peakModel = turn.model;
+            sess.peakSnippet = turn.snippet;
+            sess.peakFile = turn.files[0] ?? '';
+        }
+        if (sess.detail.length < 200) {
+            sess.detail.push({
+                date,
+                model: turn.model,
+                input: turn.input,
+                output: turn.output,
+                cost: turnCost,
+                snippet: turn.snippet,
+                file: turn.files[0] ?? ''
+            });
+        }
+
+        const cellKey = `${date}|${turn.model}|${project}`;
+        const cell = byCell.get(cellKey) ?? { date, model: turn.model, project, input: 0, output: 0, cost: 0, inputCost: 0, outputCost: 0, turns: 0 };
+        const split = turn.cacheRead != null
+            ? costSplitRealCache(turn.model, turn.input, turn.cacheRead, turn.output)
+            : costSplitWithCache(turn.model, turn.input, turn.output);
+        cell.input += turn.input;
+        cell.output += turn.output;
+        cell.cost += turnCost;
+        cell.inputCost += split.input;
+        cell.outputCost += split.output;
+        cell.turns++;
+        byCell.set(cellKey, cell);
+
+        if (turn.ts > 0) {
+            const d = new Date(turn.ts);
+            const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const day = byDay.get(dateKey) ?? { date: dateKey, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {} };
+            day.inputTokens += turn.input;
+            day.outputTokens += turn.output;
+            day.costUsd += turnCost;
+            day.byModel[turn.model] = (day.byModel[turn.model] ?? 0) + turnCost;
+            byDay.set(dateKey, day);
+        }
+    };
 
     for (const { dir, project } of dirs) {
         let files: [string, vscode.FileType][];
@@ -284,86 +367,57 @@ export async function loadRealUsage(
                 detail: []
             };
             for (const turn of turns) {
-                // Dedup by responseId so snapshot + patch entries aren't double-counted.
-                const key = turn.responseId || `${name}:${seen.size}`;
-                if (turn.responseId && seen.has(key)) {
-                    continue;
-                }
-                seen.add(key);
-                const m = byModel.get(turn.model) ?? {
-                    model: turn.model, turns: 0, inputTokens: 0, outputTokens: 0, costUsd: 0
-                };
-                m.turns++;
-                m.inputTokens += turn.input;
-                m.outputTokens += turn.output;
-                const turnCost = costUsdWithCache(turn.model, turn.input, turn.output);
-                m.costUsd += turnCost;
-                byModel.set(turn.model, m);
-
-                const p = byProject.get(project) ?? {
-                    project, turns: 0, inputTokens: 0, outputTokens: 0, costUsd: 0
-                };
-                p.turns++;
-                p.inputTokens += turn.input;
-                p.outputTokens += turn.output;
-                p.costUsd += turnCost;
-                byProject.set(project, p);
-
-                const date = turn.ts > 0
-                    ? (() => { const d = new Date(turn.ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })()
-                    : 'undated';
-
-                sess.turns++;
-                sess.inputTokens += turn.input;
-                sess.outputTokens += turn.output;
-                sess.costUsd += turnCost;
-                if (date !== 'undated' && !sess.date) {
-                    sess.date = date;
-                }
-                if (turn.input > sess.peakInput) {
-                    sess.peakInput = turn.input;
-                    sess.peakModel = turn.model;
-                    sess.peakSnippet = turn.snippet;
-                    sess.peakFile = turn.files[0] ?? '';
-                }
-                if (sess.detail.length < 200) {
-                    sess.detail.push({
-                        date,
-                        model: turn.model,
-                        input: turn.input,
-                        output: turn.output,
-                        cost: turnCost,
-                        snippet: turn.snippet,
-                        file: turn.files[0] ?? ''
-                    });
-                }
-
-                const cellKey = `${date}|${turn.model}|${project}`;
-                const cell = byCell.get(cellKey) ?? { date, model: turn.model, project, input: 0, output: 0, cost: 0, inputCost: 0, outputCost: 0, turns: 0 };
-                const split = costSplitWithCache(turn.model, turn.input, turn.output);
-                cell.input += turn.input;
-                cell.output += turn.output;
-                cell.cost += turnCost;
-                cell.inputCost += split.input;
-                cell.outputCost += split.output;
-                cell.turns++;
-                byCell.set(cellKey, cell);
-
-                if (turn.ts > 0) {
-                    const d = new Date(turn.ts);
-                    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    const day = byDay.get(dateKey) ?? { date: dateKey, inputTokens: 0, outputTokens: 0, costUsd: 0, byModel: {} };
-                    day.inputTokens += turn.input;
-                    day.outputTokens += turn.output;
-                    day.costUsd += turnCost;
-                    day.byModel[turn.model] = (day.byModel[turn.model] ?? 0) + turnCost;
-                    byDay.set(dateKey, day);
-                }
+                accumulate(turn, project, sess);
             }
             if (sess.turns > 0) {
                 sessionList.push(sess);
             }
         }
+    }
+
+    // Fold in agent-mode sessions (newer VS Code / Copilot store usage in
+    // agentSessionData/<id>/session.db rather than chatSessions/*.jsonl).
+    try {
+        const agentSessions = await loadAgentSessions(scope);
+        for (const a of agentSessions) {
+            const sess: SessionUsage = {
+                sessionId: a.sessionId,
+                project: a.project,
+                title: a.title,
+                date: '',
+                turns: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                costUsd: 0,
+                peakInput: 0,
+                peakModel: '',
+                peakSnippet: '',
+                peakFile: '',
+                detail: []
+            };
+            for (const t of a.turns) {
+                accumulate(
+                    {
+                        model: t.model,
+                        input: t.input,
+                        output: t.output,
+                        responseId: t.turnId,
+                        ts: a.dateMs,
+                        snippet: a.snippet,
+                        files: [],
+                        cacheRead: t.cacheRead
+                    },
+                    a.project,
+                    sess
+                );
+            }
+            if (sess.turns > 0) {
+                sessions++;
+                sessionList.push(sess);
+            }
+        }
+    } catch {
+        // agent-session store unavailable — keep legacy results
     }
 
     const perModel = [...byModel.values()].sort((a, b) => b.costUsd - a.costUsd);

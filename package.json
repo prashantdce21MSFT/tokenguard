@@ -2,7 +2,7 @@
   "name": "tokenguard",
   "displayName": "TokenGuard — Live Token Economics Coach",
   "description": "Lives in VS Code chat, estimates tokens, enforces a token budget, and highlights token-economics mistakes as you chat with AI.",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "publisher": "PrashantVerma",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -221,6 +221,7 @@
   "devDependencies": {
     "@types/node": "^20.x",
     "@types/vscode": "^1.95.0",
+    "sql.js": "^1.10.3",
     "typescript": "^5.5.0"
   }
 }

@@ -101,6 +101,29 @@ export function allPrices(): Record<string, ModelPrice> {
     return priceTable();
 }
 
+/**
+ * Cost using the REAL prompt-cache split reported by newer Copilot agent
+ * sessions. `inputTokens` is the total input (which already includes
+ * `cacheReadTokens`); cached reads are billed at `cacheReadPriceMultiplier`
+ * (default 0.1) of the input rate, the remainder at the full input rate.
+ */
+export function costUsdRealCache(modelId: string, inputTokens: number, cacheReadTokens: number, outputTokens: number): number {
+    const s = costSplitRealCache(modelId, inputTokens, cacheReadTokens, outputTokens);
+    return s.input + s.output;
+}
+
+/** Input/output cost split (USD) honouring the real cache-read count. */
+export function costSplitRealCache(modelId: string, inputTokens: number, cacheReadTokens: number, outputTokens: number): { input: number; output: number } {
+    const mult = Math.max(0, vscode.workspace.getConfiguration('tokenguard').get<number>('cacheReadPriceMultiplier', 0.1));
+    const { price } = priceForModel(modelId);
+    const cached = Math.max(0, Math.min(inputTokens, cacheReadTokens));
+    const fresh = inputTokens - cached;
+    return {
+        input: (fresh / 1_000_000) * price.input + (cached / 1_000_000) * price.input * mult,
+        output: (outputTokens / 1_000_000) * price.output
+    };
+}
+
 /** True when the user has enabled a prompt-cache assumption. */
 export function cacheAssumptionActive(): { active: boolean; fraction: number } {
     const frac = vscode.workspace.getConfiguration('tokenguard').get<number>('assumedCacheReadFraction', 0);

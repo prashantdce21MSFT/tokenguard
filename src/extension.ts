@@ -7,6 +7,7 @@ import { logUsage } from './usagelog';
 import { loadCalibration } from './history';
 import { loadEditRoi } from './roi';
 import { loadRealUsage } from './realusage';
+import { initAgentSessions } from './agentsessions';
 import { showDashboardPanel, showCalibrationPanel, showRoiPanel } from './dashboard';
 import { buildPromptIndex, ensurePromptIndex, findHistoricalDuplicate } from './promptindex';
 
@@ -33,6 +34,7 @@ function nextGlobalTurn(): number {
 export function activate(context: vscode.ExtensionContext) {
     tracker = new BudgetTracker(context.globalState);
     extContext = context;
+    initAgentSessions(context);
 
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBar.command = 'tokenguard.showReport';

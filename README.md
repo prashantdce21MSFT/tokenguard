@@ -28,9 +28,12 @@ into live guardrails.
 6. 📏 **No output cap** — generative ask with no brevity instruction (output is ~4–6× input).
 
 **Historical analytics (ground-truth, from Copilot's own logs)**
-- 📊 **Real Historical Usage** — reads the real `promptTokens`/`outputTokens` Copilot
-  persists in `chatSessions/*.jsonl`, aggregated per model across this workspace or
-  all workspaces. Not an estimate.
+- 📊 **Real Historical Usage** — reads the real token counts Copilot persists to disk,
+  aggregated per model across this workspace or all workspaces. Not an estimate. Two
+  stores are read: the legacy `chatSessions/*.jsonl` (`promptTokens`/`outputTokens`)
+  **and** newer agent-mode sessions in `agentSessionData/<id>/session.db`
+  (`turn_usage` table), so usage keeps showing on recent VS Code builds. Agent-mode
+  turns use their real prompt-cache split for accurate cost.
 - 🎯 **Personal Calibration** — learns per-model baselines (output/input ratio, avg
   cost) from those real tokens and auto-corrects the live reasoning multiplier and
   snowball threshold.
